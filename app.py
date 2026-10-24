@@ -9,9 +9,9 @@ import pandas as pd
 import requests
 import streamlit as st
 
-st.set_page_config(page_title='SPORT EDGE AI · v0.8', page_icon='📈', layout='wide')
+st.set_page_config(page_title='SPORT EDGE AI · v1.0', page_icon='📈', layout='wide')
 st.title('SPORT EDGE AI')
-st.caption('v0.8 · HRB Market Intelligence · Datos y probabilidades manuales donde se indique · Sin apuestas automáticas')
+st.caption('v1.0 · HRB Market Intelligence · Datos y probabilidades manuales donde se indique · Sin apuestas automáticas')
 LEAGUES = {'MLB': ('baseball','mlb'), 'NHL': ('hockey','nhl'), 'NBA': ('basketball','nba'), 'NFL': ('football','nfl'), 'NCAAF': ('football','college-football'), 'Soccer': ('soccer','eng.1')}
 SOCCER_LEAGUES = {'Premier League': 'eng.1', 'LaLiga': 'esp.1', 'Serie A': 'ita.1', 'Bundesliga': 'ger.1', 'Ligue 1': 'fra.1', 'Champions League': 'uefa.champions', 'Europa League': 'uefa.europa', 'MLS': 'usa.1'}
 DATA_FILE = Path(__file__).parent / 'bets.csv'
@@ -53,7 +53,7 @@ soccer_slug = None
 if league == 'Soccer':
     soccer_competition = st.selectbox('Competición de fútbol', list(SOCCER_LEAGUES))
     soccer_slug = SOCCER_LEAGUES[soccer_competition]
-t1,t2,t3,t4,t5,t6,t7,t8,t9,t10,t11=st.tabs(['📅 Sports Dashboard','📊 Betting Analyzer','🧩 Parlay Builder','📒 Bet Tracker','🎯 HRB Market Scanner','🧠 NBA / NFL Models','⭐ Best Parlay 2–20','🔎 Analyze All Games','📈 Team Form & Matchups','🛡️ EDGE Risk Shield','📉 Performance Lab'])
+t1,t2,t3,t4,t5,t6,t7,t8,t9,t10,t11,t12,t13=st.tabs(['📅 Sports Dashboard','📊 Betting Analyzer','🧩 Parlay Builder','📒 Bet Tracker','🎯 HRB Market Scanner','🧠 NBA / NFL Models','⭐ Best Parlay 2–20','🔎 Analyze All Games','📈 Team Form & Matchups','🛡️ EDGE Risk Shield','📉 Performance Lab','🏀🏈 Player Boxscores','🔬 Player Trend Lab'])
 with t1:
     st.subheader('Partidos y resultados')
     d=st.date_input('Fecha', value=date.today(), key='schedule_date')
@@ -196,9 +196,9 @@ with t5:
 - [ ] Exposición y límite de gasto definidos antes de apostar.""")
 
 st.divider()
-st.caption('SPORT EDGE AI v0.8 · Mercados candidatos, NO disponibilidad confirmada en HRB · Sin conexión a HRB, apuestas automáticas, predicciones calibradas ni Telegram.')
+st.caption('SPORT EDGE AI v1.0 · Mercados candidatos, NO disponibilidad confirmada en HRB · Sin conexión a HRB, apuestas automáticas, predicciones calibradas ni Telegram.')
 
-# v0.8: modelos exploratorios parametrizados. No son predicciones calibradas.
+# v1.0: modelos exploratorios parametrizados. No son predicciones calibradas.
 import math
 from itertools import combinations
 
@@ -297,7 +297,7 @@ with t7:
             st.error(f"Corrige los datos: {exc}")
 
 
-# v0.8 — Exploración automática de toda la jornada (NBA y NFL).
+# v1.0 — Exploración automática de toda la jornada (NBA y NFL).
 # La API pública de ESPN no es una fuente oficial ni un proveedor de cuotas HRB.
 @st.cache_data(ttl=900, show_spinner=False)
 def get_full_scoreboard(sport_key, slug, selected_day):
@@ -378,7 +378,7 @@ with t8:
                 st.error(f"No se pudo completar la consulta: {exc}")
 
 
-# v0.8 — Team Form: resultados pasados, sin datos futuros ni predicciones inventadas.
+# v1.0 — Team Form: resultados pasados, sin datos futuros ni predicciones inventadas.
 from datetime import timedelta
 
 @st.cache_data(ttl=1800, show_spinner=False)
@@ -582,3 +582,199 @@ with t11:
             st.error(f"No se pudo procesar el archivo: {ex}")
     else:
         st.info("Exporta tu historial desde Bet Tracker e impórtalo aquí para revisar el rendimiento.")
+
+
+# v1.0 — Explorador de estadísticas INDIVIDUALES observadas, no pronósticos.
+@st.cache_data(ttl=1800, show_spinner=False)
+def historical_events_for_team(sport, slug, team_id, before_day, lookback_days):
+    from datetime import timedelta
+    collected = []
+    seen = set()
+    failures = 0
+    for offset in range(1, lookback_days + 1):
+        day = before_day - timedelta(days=offset)
+        try:
+            for game in get_full_scoreboard(sport, slug, day):
+                gid = str(game.get('id', ''))
+                competitors = ((game.get('competitions') or [{}])[0].get('competitors') or [])
+                has_team = any(str((c.get('team') or {}).get('id')) == str(team_id) for c in competitors)
+                if gid and gid not in seen and has_team and ((game.get('status') or {}).get('type') or {}).get('completed'):
+                    seen.add(gid)
+                    collected.append(game)
+        except (requests.RequestException, ValueError, KeyError):
+            failures += 1
+    collected.sort(key=lambda x: x.get('date', ''), reverse=True)
+    return collected, failures
+
+def extract_boxscore_rows(summary):
+    rows = []
+    for team in (summary.get('boxscore') or {}).get('players') or []:
+        team_name = (team.get('team') or {}).get('displayName', 'Equipo')
+        for group in team.get('statistics') or []:
+            labels = group.get('labels') or group.get('names') or []
+            category = group.get('name') or group.get('displayName') or 'Estadísticas'
+            for athlete_row in group.get('athletes') or []:
+                athlete = athlete_row.get('athlete') or {}
+                values = athlete_row.get('stats') or []
+                if not athlete.get('displayName') or not values: continue
+                row = {'Equipo': team_name, 'Jugador': athlete.get('displayName'), 'Categoría': category}
+                for i, value in enumerate(values):
+                    row[str(labels[i]) if i < len(labels) else f'Estadística {i+1}'] = value
+                rows.append(row)
+    return rows
+
+with t12:
+    st.subheader('Player Boxscores · NBA / NFL')
+    st.caption('Estadísticas individuales de partidos FINALIZADOS. Sin proyecciones ni cuotas de Hard Rock Bet.')
+    if league not in ('NBA', 'NFL'):
+        st.info('Selecciona NBA o NFL en Deporte.')
+    else:
+        p_day = st.date_input('Fecha de referencia (solo partidos anteriores)', value=date.today(), key='player_day')
+        p_window = st.selectbox('Días históricos a consultar', [7, 14, 21, 30], index=1, key='player_window')
+        p_limit = st.slider('Máximo de partidos a revisar', 1, 8, 3, key='player_limit')
+        if st.button('🏀🏈 Consultar jugadores y estadísticas', type='primary', key='player_scan'):
+            sport, slug = LEAGUES[league]
+            try:
+                scheduled = get_full_scoreboard(sport, slug, p_day)
+                if not scheduled:
+                    st.info('No hay partidos en la fecha seleccionada. Prueba otra fecha.')
+                else:
+                    st.success(f'{len(scheduled)} enfrentamientos encontrados.')
+                    for event in scheduled:
+                        competitors = ((event.get('competitions') or [{}])[0].get('competitors') or [])
+                        if len(competitors) < 2: continue
+                        with st.expander(' vs. '.join((c.get('team') or {}).get('displayName','N/D') for c in competitors)):
+                            for competitor in competitors:
+                                team = competitor.get('team') or {}
+                                st.markdown('**' + team.get('displayName', 'Equipo') + '**')
+                                history, errors = historical_events_for_team(sport, slug, team.get('id'), p_day, p_window)
+                                if errors: st.caption(f'{errors} fechas sin respuesta de ESPN; historial posiblemente incompleto.')
+                                if not history:
+                                    st.info('No hay partidos finalizados disponibles en esta ventana.')
+                                    continue
+                                for previous in history[:p_limit]:
+                                    event_id = previous.get('id')
+                                    try:
+                                        detail = get_event_summary(sport, slug, event_id)
+                                        rows = extract_boxscore_rows(detail)
+                                        rows = [r for r in rows if r['Equipo'] == team.get('displayName')]
+                                        with st.expander(f"{previous.get('date','')[:10]} · partido {event_id}"):
+                                            if rows: st.dataframe(pd.DataFrame(rows).fillna('—'), hide_index=True, use_container_width=True)
+                                            else: st.caption('ESPN no publicó estadísticas individuales para este partido.')
+                                    except (requests.RequestException, ValueError, KeyError) as exc:
+                                        st.caption(f'No se pudieron recuperar estadísticas del partido {event_id}: {exc}')
+                    st.warning('Estas son estadísticas observadas de partidos anteriores, no probabilidades predictivas. Los mercados de HRB requieren verificación independiente.')
+            except (requests.RequestException, ValueError, KeyError) as exc:
+                st.error(f'Error al consultar la jornada: {exc}')
+
+
+# v1.0 — Historical player trend explorer. Observed hit rates, NOT model probabilities.
+from math import sqrt
+
+def wilson_interval(successes, trials, z=1.96):
+    if trials <= 0: return None, None
+    p = successes / trials
+    den = 1 + z*z/trials
+    center = (p + z*z/(2*trials))/den
+    margin = z*sqrt((p*(1-p) + z*z/(4*trials))/trials)/den
+    return max(0,center-margin), min(1,center+margin)
+
+def numeric_stat(value):
+    try:
+        if value is None or isinstance(value,bool): return None
+        txt = str(value).strip().replace(',','')
+        if not txt or '/' in txt or '-' in txt and txt.count('-') > 0: return None
+        return float(txt)
+    except (ValueError,TypeError): return None
+
+with t13:
+    st.subheader('Player Trend Lab · NBA / NFL')
+    st.info('Explora frecuencias HISTÓRICAS de superar una línea. Una frecuencia observada NO es una probabilidad predictiva ni implica ventaja sobre HRB.')
+    if league not in ('NBA','NFL'):
+        st.warning('Selecciona NBA o NFL arriba.')
+    else:
+        tday = st.date_input('Jornada a estudiar', value=date.today(), key='trend_date')
+        days = st.selectbox('Ventana de días previos', [7,14,21,30], index=2, key='trend_days')
+        max_games = st.slider('Máximo de partidos históricos por equipo', 2,12,6,key='trend_max_games')
+        st.caption('Para evitar consultas innecesarias, elige un encuentro y un equipo antes de descargar boxscores.')
+        if st.button('1 · Consultar enfrentamientos', key='trend_fetch_games'):
+            try:
+                st.session_state['trend_schedule'] = get_full_scoreboard(*LEAGUES[league], tday)
+                st.session_state['trend_schedule_key'] = (league,str(tday))
+            except (requests.RequestException,ValueError,KeyError) as e:
+                st.error(f'No se pudo consultar la jornada: {e}')
+        schedule = st.session_state.get('trend_schedule', [])
+        if st.session_state.get('trend_schedule_key') != (league,str(tday)):
+            schedule = []
+        if schedule:
+            names = []
+            for ev in schedule:
+                comp = (ev.get('competitions') or [{}])[0]
+                competitors = comp.get('competitors') or []
+                if len(competitors) < 2: continue
+                names.append((str(ev.get('id')), ' vs '.join((c.get('team') or {}).get('displayName','N/D') for c in competitors), competitors))
+            if names:
+                game_idx = st.selectbox('Partido',range(len(names)),format_func=lambda i:names[i][1],key='trend_game')
+                selected_game = names[game_idx]
+                teams = [(str((c.get('team') or {}).get('id','')), (c.get('team') or {}).get('displayName','Equipo')) for c in selected_game[2]]
+                team_idx = st.selectbox('Equipo',range(len(teams)),format_func=lambda i:teams[i][1],key='trend_team')
+                team_id, team_name = teams[team_idx]
+                if st.button('2 · Descargar historial de jugadores',type='primary',key='trend_get_history'):
+                    with st.spinner('Recuperando partidos y estadísticas anteriores...'):
+                        sport, slug = LEAGUES[league]
+                        history, errors = historical_events_for_team(sport,slug,team_id,tday,days)
+                        records=[]; failed_details=0
+                        for ev in history[:max_games]:
+                            try:
+                                detail = get_event_summary(sport,slug,ev['id'])
+                                for row in extract_boxscore_rows(detail):
+                                    if row.get('Equipo') == team_name:
+                                        records.append({'Fecha':ev.get('date','')[:10], **row})
+                            except (requests.RequestException,ValueError,KeyError): failed_details += 1
+                        st.session_state['trend_records']=records
+                        st.session_state['trend_record_key']=(league,str(tday),team_id,days,max_games)
+                        st.session_state['trend_errors']=(errors,failed_details,len(history[:max_games]))
+                key=(league,str(tday),team_id,days,max_games)
+                if st.session_state.get('trend_record_key') == key:
+                    records=st.session_state.get('trend_records',[])
+                    errs=st.session_state.get('trend_errors',(0,0,0))
+                    if errs[0] or errs[1]: st.warning(f'Consultas diarias fallidas: {errs[0]}. Boxscores fallidos: {errs[1]}. La muestra puede estar incompleta.')
+                    if not records:
+                        st.warning('No se encontraron estadísticas individuales. Prueba una ventana mayor o una jornada anterior.')
+                    else:
+                        frame=pd.DataFrame(records)
+                        players=sorted(frame['Jugador'].dropna().unique())
+                        player=st.selectbox('Jugador',players,key='trend_player')
+                        pf=frame[frame['Jugador']==player].copy()
+                        categories=sorted(pf['Categoría'].dropna().unique())
+                        category=st.selectbox('Categoría estadística',categories,key='trend_category')
+                        pf=pf[pf['Categoría']==category].copy()
+                        numeric_cols=[]
+                        for col in pf.columns:
+                            if col in ('Fecha','Equipo','Jugador','Categoría'): continue
+                            nums=pf[col].map(numeric_stat)
+                            if nums.notna().sum() >= 2: numeric_cols.append(col)
+                        if not numeric_cols:
+                            st.warning('No se encontraron estadísticas numéricas comparables en esta categoría.')
+                        else:
+                            stat=st.selectbox('Estadística',numeric_cols,key='trend_stat')
+                            pf['Valor']=pf[stat].map(numeric_stat)
+                            pf=pf.dropna(subset=['Valor']).sort_values('Fecha')
+                            if len(pf)<2:
+                                st.warning('Muestra insuficiente: se necesitan al menos dos partidos válidos.')
+                            else:
+                                default_line=float(pf['Valor'].median())
+                                line=st.number_input('Línea HRB (introducción manual)',value=default_line,step=0.5,key='trend_line')
+                                over=int((pf['Valor']>line).sum()); n=len(pf)
+                                low,high=wilson_interval(over,n)
+                                a,b,c=st.columns(3)
+                                a.metric('Partidos válidos',str(n))
+                                b.metric('Over histórico',f'{over}/{n} ({over/n:.1%})')
+                                c.metric('Media observada',f'{pf["Valor"].mean():.2f}')
+                                st.caption(f'Intervalo Wilson descriptivo (95%): {low:.1%}–{high:.1%}. No ajusta rivales, minutos, lesiones ni cuotas. Muestras pequeñas = gran incertidumbre.')
+                                st.line_chart(pf.set_index('Fecha')['Valor'])
+                                st.dataframe(pf[['Fecha','Jugador','Categoría',stat,'Valor']],hide_index=True,use_container_width=True)
+                                st.download_button('Exportar tendencia CSV',pf[['Fecha','Jugador','Categoría',stat,'Valor']].to_csv(index=False).encode('utf-8'),file_name='sport_edge_player_trend.csv',mime='text/csv')
+                                st.error('NO usar la tasa histórica como probabilidad de ganar ni como entrada automática del optimizador de parlays. Falta entrenar y validar modelos predictivos.')
+        elif st.session_state.get('trend_schedule_key') == (league,str(tday)):
+            st.info('No se encontraron partidos en esta fecha.')
